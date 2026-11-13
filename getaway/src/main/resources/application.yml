@@ -1,0 +1,63 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          discovery:
+            locator:
+              enabled: true
+              lower-case-service-id: true
+          routes:
+            - id: usuarios-service
+              uri: lb://usuarios-service
+              predicates:
+                - Path=/api/usuarios/**
+            - id: deudas-service
+              uri: lb://deudas-service
+              predicates:
+                - Path=/api/deudas/**
+            - id: pagos-service
+              uri: lb://pagos-service
+              predicates:
+                - Path=/api/pagos/**
+            - id: tarjetas-service
+              uri: lb://tarjetas-service
+              predicates:
+                - Path=/api/tarjetas/**
+            - id: notificaciones-service
+              uri: lb://notificaciones-service
+              predicates:
+                - Path=/api/notificaciones/**
+          globalcors:
+            corsConfigurations:
+              '[/**]':
+                allowedOrigins: "*"
+                allowedMethods: "*"
+                allowedHeaders: "*"
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: usuarios
+        url: /api/usuarios/v3/api-docs
+      - name: deudas
+        url: /api/deudas/v3/api-docs
+      - name: pagos
+        url: /api/pagos/v3/api-docs
+      - name: tarjetas
+        url: /api/tarjetas/v3/api-docs
+      - name: notificaciones
+        url: /api/notificaciones/v3/api-docs
