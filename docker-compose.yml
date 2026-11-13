@@ -1,0 +1,53 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: pagoflex-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./mysql-init:/docker-entrypoint-initdb.d
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  eureka-server:
+    build: ./eureka/eureka
+    container_name: pagoflex-eureka
+    ports:
+      - "8761:8761"
+
+  usuarios-service:
+    build: ./usuarios/usuarios
+    container_name: pagoflex-usuarios
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/pagoflex_usuarios?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: pagoflex
+      SPRING_DATASOURCE_PASSWORD: pagoflex123
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      JWT_SECRET: UGFnb0ZsZXhTZWNyZXRLZXlNdXlTZWd1cmFQYXJhSldUMjAyNiE=
+      JWT_EXPIRATION_MS: 86400000
+
+  api-gateway:
+    build: ./getaway/getaway
+    container_name: pagoflex-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - eureka-server
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+
+volumes:
+  mysql_data:
