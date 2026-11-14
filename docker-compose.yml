@@ -16,13 +16,13 @@ services:
       retries: 5
 
   eureka-server:
-    build: ./eureka/eureka
+    build: ./eureka
     container_name: pagoflex-eureka
     ports:
       - "8761:8761"
 
   usuarios-service:
-    build: ./usuarios/usuarios
+    build: ./usuarios
     container_name: pagoflex-usuarios
     ports:
       - "8081:8081"
@@ -39,8 +39,42 @@ services:
       JWT_SECRET: UGFnb0ZsZXhTZWNyZXRLZXlNdXlTZWd1cmFQYXJhSldUMjAyNiE=
       JWT_EXPIRATION_MS: 86400000
 
+  deudas-service:
+    build: ./deudas
+    container_name: pagoflex-deudas
+    ports:
+      - "8082:8082"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/pagoflex_deudas?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: pagoflex
+      SPRING_DATASOURCE_PASSWORD: pagoflex123
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      JWT_SECRET: UGFnb0ZsZXhTZWNyZXRLZXlNdXlTZWd1cmFQYXJhSldUMjAyNiE=
+
+  pagos-service:
+    build: ./pagos
+    container_name: pagoflex-pagos
+    ports:
+      - "8083:8083"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/pagoflex_pagos?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: pagoflex
+      SPRING_DATASOURCE_PASSWORD: pagoflex123
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      JWT_SECRET: UGFnb0ZsZXhTZWNyZXRLZXlNdXlTZWd1cmFQYXJhSldUMjAyNiE=
+
   api-gateway:
-    build: ./getaway/getaway
+    build: ./getaway
     container_name: pagoflex-gateway
     ports:
       - "8080:8080"
