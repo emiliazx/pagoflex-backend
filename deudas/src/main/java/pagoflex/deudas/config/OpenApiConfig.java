@@ -17,12 +17,16 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("PagoFlex - Deudas Service")
                         .version("1.0")
-                        .description("Microservicio de deudas y cuotas protegido con JWT"))
+                        .description("Microservicio de deudas y cuotas protegido con JWT. "
+                                + "Crear, editar y eliminar deudas es exclusivo del rol GESTOR; "
+                                + "cada USUARIO accede solo a sus propios datos. "
+                                + "Usa **Authorize** con el token de POST /api/usuarios/login."))
                 .components(new Components()
                         .addSecuritySchemes("bearerAuth",
                                 new SecurityScheme()
                                         .type(SecurityScheme.Type.HTTP)
                                         .scheme("bearer")
-                                        .bearerFormat("JWT")));
+                                        .bearerFormat("JWT")
+                                        .description("Token obtenido en POST /api/usuarios/login")));
     }
 }

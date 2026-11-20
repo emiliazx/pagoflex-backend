@@ -29,10 +29,6 @@ spring:
               uri: lb://tarjetas-service
               predicates:
                 - Path=/api/tarjetas/**
-            - id: notificaciones-service
-              uri: lb://notificaciones-service
-              predicates:
-                - Path=/api/notificaciones/**
           globalcors:
             corsConfigurations:
               '[/**]':
@@ -59,5 +55,3 @@ springdoc:
         url: /api/pagos/v3/api-docs
       - name: tarjetas
         url: /api/tarjetas/v3/api-docs
-      - name: notificaciones
-        url: /api/notificaciones/v3/api-docs

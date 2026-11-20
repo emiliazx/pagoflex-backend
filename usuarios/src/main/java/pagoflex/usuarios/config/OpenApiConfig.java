@@ -7,21 +7,25 @@ import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityScheme;
-@Configuration 
+
+@Configuration
 public class OpenApiConfig {
-      @Bean
+
+    @Bean
     public OpenAPI openAPI() {
         return new OpenAPI()
                 .info(new Info()
                         .title("PagoFlex - Usuarios Service")
                         .version("1.0")
-                        .description("Microservicio de usuarios con JWT + BCrypt"))
+                        .description("Microservicio de usuarios: registro, login con JWT (BCrypt), "
+                                + "recuperación con preguntas secretas, bloqueo de cuenta y foto de perfil. "
+                                + "Para los endpoints protegidos usa **Authorize** e ingresa el token del login."))
                 .components(new Components()
                         .addSecuritySchemes("bearerAuth",
                                 new SecurityScheme()
                                         .type(SecurityScheme.Type.HTTP)
                                         .scheme("bearer")
-                                        .bearerFormat("JWT")));
+                                        .bearerFormat("JWT")
+                                        .description("Token obtenido en POST /api/usuarios/login")));
     }
 }
-
