@@ -90,6 +90,23 @@ services:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
       JWT_SECRET: UGFnb0ZsZXhTZWNyZXRLZXlNdXlTZWd1cmFQYXJhSldUMjAyNiE=
 
+  ticket-service:
+    build: ./ticket
+    container_name: pagoflex-ticket
+    ports:
+      - "8085:8085"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/pagoflex_tickets?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: pagoflex
+      SPRING_DATASOURCE_PASSWORD: pagoflex123
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+      JWT_SECRET: UGFnb0ZsZXhTZWNyZXRLZXlNdXlTZWd1cmFQYXJhSldUMjAyNiE=
+
   api-gateway:
     build: ./getaway
     container_name: pagoflex-gateway
