@@ -29,6 +29,10 @@ spring:
               uri: lb://tarjetas-service
               predicates:
                 - Path=/api/tarjetas/**
+            - id: tickets-service
+              uri: lb://tickets-service
+              predicates:
+                - Path=/api/tickets/**
           globalcors:
             corsConfigurations:
               '[/**]':
