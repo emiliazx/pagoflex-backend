@@ -1,17 +1,7 @@
 package pagoflex.usuarios.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import jakarta.persistence.*;
+import lombok.*;
 
 @Entity
 @Table(name = "usuarios")
@@ -31,7 +21,6 @@ public class Usuario {
     @Column(nullable = false, unique = true)
     private String correo;
 
-    /** Hash BCrypt (incluye sal automática) */
     @Column(name = "clave_hash", nullable = false)
     private String claveHash;
 
@@ -43,17 +32,22 @@ public class Usuario {
     private String pregunta2;
     private String respuesta2Hash;
 
-    @Lob
-    @Column(columnDefinition = "LONGBLOB")
-    private byte[] foto;
+    /** URL de la foto en el servidor (no BLOB) */
+    @Column(name = "foto_url", length = 500)
+    private String fotoUrl;
 
-    /** Intentos fallidos de login */
     @Column(nullable = false)
     @Builder.Default
     private int intentosFallidos = 0;
 
-    /** Cuenta bloqueada temporalmente */
     @Column(nullable = false)
     @Builder.Default
     private boolean bloqueado = false;
+
+    /** false = cuenta creada pero no puede entrar hasta que admin/gestor habilite */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean habilitado = false;
+
+
 }

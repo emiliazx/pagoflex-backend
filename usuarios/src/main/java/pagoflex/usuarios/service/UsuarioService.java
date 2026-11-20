@@ -4,13 +4,19 @@ import pagoflex.usuarios.dto.*;
 import pagoflex.usuarios.model.Usuario;
 import pagoflex.usuarios.repository.UsuarioRepository;
 import pagoflex.usuarios.security.JwtService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
@@ -26,6 +32,12 @@ public class UsuarioService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
+    @Value("${app.upload-dir:uploads/usuarios}")
+    private String uploadDir;
+
+    @Value("${app.base-url:http://localhost:8081}")
+    private String baseUrl;
+
     public UsuarioService(UsuarioRepository repository,
                           PasswordEncoder passwordEncoder,
                           JwtService jwtService) {
@@ -34,15 +46,23 @@ public class UsuarioService {
         this.jwtService = jwtService;
     }
 
+    // ===================== LOGIN =====================
     @Transactional
     public LoginResponse login(LoginRequest req) {
         String correo = req.getCorreo().toLowerCase(Locale.ROOT).trim();
         Usuario u = repository.findByCorreo(correo)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Credenciales inválidas"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED, "Credenciales inválidas"));
 
         if (u.isBloqueado()) {
             throw new ResponseStatusException(HttpStatus.LOCKED,
-                    "Cuenta bloqueada por demasiados intentos fallidos. Contacte al administrador.");
+                    "Cuenta bloqueada por demasiados intentos fallidos.");
+        }
+
+        // No entra hasta que admin/gestor habilite
+        if (!u.isHabilitado()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Tu cuenta está pendiente de aprobación por un administrador o gestor.");
         }
 
         if (!passwordEncoder.matches(req.getContrasena(), u.getClaveHash())) {
@@ -58,7 +78,6 @@ public class UsuarioService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, msg);
         }
 
-        // Login exitoso → resetear intentos
         u.setIntentosFallidos(0);
         repository.save(u);
 
@@ -71,20 +90,22 @@ public class UsuarioService {
                 .rut(u.getRut())
                 .correo(u.getCorreo())
                 .rol(u.getRol())
-                .tieneFoto(u.getFoto() != null && u.getFoto().length > 0)
+                .fotoUrl(u.getFotoUrl())
                 .build();
     }
 
+    // ===================== REGISTRO =====================
     public UsuarioResponse registrar(RegistroRequest req) {
         String correo = req.getCorreo().toLowerCase(Locale.ROOT).trim();
         if (repository.existsByCorreo(correo)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El correo ya está registrado");
         }
+
         Usuario u = Usuario.builder()
                 .nombre(req.getNombre().trim())
                 .rut(req.getRut().trim())
                 .correo(correo)
-                .claveHash(passwordEncoder.encode(req.getContrasena())) // BCrypt + sal
+                .claveHash(passwordEncoder.encode(req.getContrasena()))
                 .rol("USUARIO")
                 .pregunta1(req.getPregunta1())
                 .respuesta1Hash(req.getRespuesta1() != null ? hashSimple(normalizar(req.getRespuesta1())) : "")
@@ -92,10 +113,35 @@ public class UsuarioService {
                 .respuesta2Hash(req.getRespuesta2() != null ? hashSimple(normalizar(req.getRespuesta2())) : "")
                 .intentosFallidos(0)
                 .bloqueado(false)
+                .habilitado(false) // pendiente de aprobación
                 .build();
+
         return toResponse(repository.save(u));
     }
 
+    // ===================== HABILITAR / DESHABILITAR =====================
+    public UsuarioResponse habilitar(Long id) {
+        Usuario u = buscar(id);
+        u.setHabilitado(true);
+        u.setBloqueado(false);
+        u.setIntentosFallidos(0);
+        return toResponse(repository.save(u));
+    }
+
+    public UsuarioResponse deshabilitar(Long id) {
+        Usuario u = buscar(id);
+        u.setHabilitado(false);
+        return toResponse(repository.save(u));
+    }
+
+    public List<UsuarioResponse> listarPendientes() {
+        return repository.findAll().stream()
+                .filter(u -> !u.isHabilitado())
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    // ===================== CRUD =====================
     public UsuarioResponse obtener(Long id) {
         return toResponse(buscar(id));
     }
@@ -127,45 +173,25 @@ public class UsuarioService {
         repository.save(u);
     }
 
-    public void recuperar(RecuperarRequest req) {
-        Usuario u = repository.findByCorreo(req.getCorreo().toLowerCase(Locale.ROOT).trim())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        if (!hashSimple(normalizar(req.getRespuesta1())).equals(u.getRespuesta1Hash())
-                || !hashSimple(normalizar(req.getRespuesta2())).equals(u.getRespuesta2Hash())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Respuestas incorrectas");
+    // ===================== FOTO (archivo + URL en BD) =====================
+    public UsuarioResponse guardarFoto(Long id, MultipartFile archivo) {
+        if (archivo == null || archivo.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Archivo de foto vacío");
         }
-        // Validar complejidad de la nueva clave
-        String nueva = req.getNuevaContrasena();
-        if (nueva == null || !nueva.matches("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#._-]).{8,}$")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "La nueva contraseña debe tener mínimo 8 caracteres, mayúscula, minúscula, número y carácter especial");
+        Usuario u = buscar(id);
+        try {
+            Path dir = Paths.get(uploadDir);
+            Files.createDirectories(dir);
+            String nombre = id + ".jpg";
+            Path destino = dir.resolve(nombre);
+            Files.write(destino, archivo.getBytes());
+
+            String url = baseUrl + "/uploads/usuarios/" + nombre;
+            u.setFotoUrl(url);
+            return toResponse(repository.save(u));
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo guardar la foto");
         }
-        u.setClaveHash(passwordEncoder.encode(nueva));
-        u.setIntentosFallidos(0);
-        u.setBloqueado(false);
-        repository.save(u);
-    }
-
-    /** Desbloquear cuenta (solo ADMIN) */
-    public void desbloquear(Long id) {
-        Usuario u = buscar(id);
-        u.setBloqueado(false);
-        u.setIntentosFallidos(0);
-        repository.save(u);
-    }
-
-    public void guardarFoto(Long id, byte[] foto) {
-        Usuario u = buscar(id);
-        u.setFoto(foto);
-        repository.save(u);
-    }
-
-    public byte[] obtenerFoto(Long id) {
-        Usuario u = buscar(id);
-        if (u.getFoto() == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Sin foto");
-        }
-        return u.getFoto();
     }
 
     public void eliminar(Long id) {
@@ -175,6 +201,7 @@ public class UsuarioService {
         repository.deleteById(id);
     }
 
+    // ===================== HELPERS =====================
     private Usuario buscar(Long id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
@@ -189,11 +216,12 @@ public class UsuarioService {
                 .rol(u.getRol())
                 .pregunta1(u.getPregunta1())
                 .pregunta2(u.getPregunta2())
-                .tieneFoto(u.getFoto() != null && u.getFoto().length > 0)
+                .fotoUrl(u.getFotoUrl())
+                .habilitado(u.isHabilitado())
+                .bloqueado(u.isBloqueado())
                 .build();
     }
 
-    /** Hash simple SHA-256 solo para respuestas secretas (no contraseñas) */
     public static String hashSimple(String texto) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");

@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Schema(description = "Resultado del login: token JWT y datos básicos del usuario")
 public class LoginResponse {
+
     @Schema(description = "JWT para enviar en el header Authorization (válido 24 h por defecto)",
             example = "eyJhbGciOiJIUzI1NiJ9...")
     private String token;
@@ -34,6 +35,8 @@ public class LoginResponse {
     @Schema(description = "Rol del usuario", allowableValues = {"ADMIN", "GESTOR", "USUARIO"}, example = "USUARIO")
     private String rol;
 
-    @Schema(description = "Indica si el usuario tiene foto de perfil", example = "false")
-    private boolean tieneFoto;
+    /** URL de la foto en el servidor (null si no tiene) */
+    @Schema(description = "URL de la foto de perfil en el servidor",
+            example = "http://localhost:8081/uploads/usuarios/3.jpg")
+    private String fotoUrl;
 }
