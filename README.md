@@ -60,7 +60,7 @@ No necesitas instalar Java, Maven ni MySQL: todo se construye dentro de los cont
 ## Ejecución con Docker
 
 ```bash
-git clone <URL-DE-ESTE-REPOSITORIO>
+git clone (https://github.com/emiliazx/pagoflex-backend)
 cd pagoflex-backend
 docker compose up -d --build
 ```
