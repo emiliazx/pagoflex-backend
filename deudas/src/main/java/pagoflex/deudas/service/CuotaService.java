@@ -36,6 +36,11 @@ public class CuotaService {
     public List<CuotaResponse> generar(GenerarCuotasRequest req) {
         Acceso.exigirGestor();
         Deuda deuda = buscarDeuda(req.getDeudaId());
+
+
+        if (req.getCantidadCuotas() < 1 || req.getCantidadCuotas() > 72) {
+    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La cantidad de cuotas debe ser entre 1 y 72");
+}
         if (!deuda.getUsuarioId().equals(req.getUsuarioId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La deuda no pertenece a ese usuario");
         }
