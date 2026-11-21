@@ -74,7 +74,7 @@ class PagoControllerTest {
         PagoRequest reqInvalido = PagoRequest.builder()
                 .deudaId(1L)
                 .usuarioId(2L)
-                .monto(new BigDecimal("0.00")) // Viola @DecimalMin("0.01")
+                .monto(new BigDecimal("0.00"))
                 .build();
 
         mockMvc.perform(post("/api/pagos")

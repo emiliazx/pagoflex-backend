@@ -1,6 +1,5 @@
 package pagoflex.usuarios.security;
 
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -21,7 +20,7 @@ public class JwtService {
     @Value("${jwt.secret:FAKESECRET_u2v3w4x5y6z7a8b9c0d1}")
     private String secret;
 
-    @Value("${jwt.expiration-ms:86400000}") // 24 horas
+    @Value("${jwt.expiration-ms:86400000}")
     private long expirationMs;
 
     public String generarToken(Long userId, String correo, String rol) {

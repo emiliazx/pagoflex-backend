@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import pagoflex.usuarios.model.Usuario;
 import pagoflex.usuarios.repository.UsuarioRepository;
 import pagoflex.usuarios.service.UsuarioService;
-@Component 
+@Component
 public class DataLoader implements CommandLineRunner {
      private final UsuarioRepository repository;
     private final PasswordEncoder passwordEncoder;
@@ -46,5 +46,4 @@ public class DataLoader implements CommandLineRunner {
                 .build());
     }
 }
-    
 

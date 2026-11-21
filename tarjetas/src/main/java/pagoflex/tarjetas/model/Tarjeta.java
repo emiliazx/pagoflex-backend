@@ -14,7 +14,7 @@ public class Tarjeta {
     @Column(nullable = false)
     private String titular;
     @Column(nullable = false)
-    private String vencimiento; // MM/YY
+    private String vencimiento;
     private String marca;
     @Column(nullable = false)
     private boolean principal;

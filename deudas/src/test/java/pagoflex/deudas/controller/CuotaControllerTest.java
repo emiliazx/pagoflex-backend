@@ -67,7 +67,7 @@ class CuotaControllerTest {
                 .deudaId(1L)
                 .usuarioId(2L)
                 .cantidadCuotas(3)
-                .primerVencimiento("01/12/2026") // Viola regex yyyy-MM-dd
+                .primerVencimiento("01/12/2026")
                 .build();
 
         mockMvc.perform(post("/api/deudas/cuotas/generar")

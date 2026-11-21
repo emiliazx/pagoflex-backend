@@ -28,8 +28,8 @@ public class GenerarCuotasRequest {
 
     @NotNull
     @Min(1)
-    @Max(60)
-    @Schema(description = "Cantidad de cuotas (1 a 60)", example = "6", minimum = "1", maximum = "60")
+    @Max(72)
+    @Schema(description = "Cantidad de cuotas (1 a 72)", example = "6", minimum = "1", maximum = "72")
     private Integer cantidadCuotas;
 
     @NotBlank

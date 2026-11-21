@@ -34,7 +34,9 @@ import pagoflex.usuarios.dto.LoginResponse;
 import pagoflex.usuarios.dto.RecuperarRequest;
 import pagoflex.usuarios.dto.RegistroRequest;
 import pagoflex.usuarios.dto.UsuarioResponse;
+import pagoflex.usuarios.security.Acceso;
 import pagoflex.usuarios.service.UsuarioService;
+import pagoflex.usuarios.storage.AlmacenFotos;
 
 @RestController
 @RequestMapping("/api/usuarios")
@@ -43,9 +45,11 @@ import pagoflex.usuarios.service.UsuarioService;
 public class UsuarioController {
 
     private final UsuarioService service;
+    private final AlmacenFotos almacenFotos;
 
-    public UsuarioController(UsuarioService service) {
+    public UsuarioController(UsuarioService service, AlmacenFotos almacenFotos) {
         this.service = service;
+        this.almacenFotos = almacenFotos;
     }
 
     @PostMapping("/login")
@@ -57,6 +61,7 @@ public class UsuarioController {
             @ApiResponse(responseCode = "200", description = "Login correcto, devuelve el token y los datos del usuario"),
             @ApiResponse(responseCode = "400", description = "Datos inválidos (correo con formato incorrecto o campos vacíos)", content = @Content),
             @ApiResponse(responseCode = "401", description = "Credenciales inválidas; el mensaje indica los intentos restantes", content = @Content),
+            @ApiResponse(responseCode = "403", description = "La cuenta aún no fue habilitada por un gestor", content = @Content),
             @ApiResponse(responseCode = "423", description = "Cuenta bloqueada por demasiados intentos fallidos", content = @Content)
     })
     public LoginResponse login(@Valid @RequestBody LoginRequest req) {
@@ -66,7 +71,7 @@ public class UsuarioController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Registrar usuario (público)",
-            description = "Crea una cuenta con rol USUARIO. La contraseña se guarda con BCrypt y las "
+            description = "Crea una cuenta con rol USUARIO que queda pendiente: no puede iniciar sesión hasta que un GESTOR la habilite. La contraseña se guarda con BCrypt y las "
                     + "respuestas secretas con SHA-256 (normalizadas a minúsculas y sin espacios en los bordes).")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Usuario creado"),
@@ -170,44 +175,105 @@ public class UsuarioController {
         service.desbloquear(id);
     }
 
-    @PutMapping(value = "/{id}/foto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @GetMapping("/pendientes")
+    @PreAuthorize("hasRole('GESTOR')")
     @SecurityRequirement(name = "bearerAuth")
-    @Operation(summary = "Subir foto de perfil",
-            description = "Envía la imagen como multipart/form-data en el campo `foto`. Tamaño máximo: 5 MB.")
+    @Operation(summary = "Listar cuentas pendientes de aprobación (solo GESTOR)",
+            description = "Usuarios registrados que todavía no pueden iniciar sesión.")
     @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "Foto guardada"),
+            @ApiResponse(responseCode = "200", description = "Cuentas pendientes (puede venir vacía)"),
             @ApiResponse(responseCode = "401", description = "Falta el token o es inválido", content = @Content),
-            @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content)
+            @ApiResponse(responseCode = "403", description = "El usuario autenticado no es GESTOR", content = @Content)
     })
-    public void subirFoto(
-            @Parameter(description = "Id del usuario", example = "3") @PathVariable Long id,
-            @Parameter(description = "Archivo de imagen (máx. 5 MB)") @RequestParam("foto") MultipartFile archivo)
-            throws Exception {
-        service.guardarFoto(id, archivo.getBytes());
+    public List<UsuarioResponse> pendientes() {
+        return service.listarPendientes();
     }
 
-    @GetMapping(value = "/{id}/foto", produces = MediaType.IMAGE_JPEG_VALUE)
+    @PutMapping("/{id}/habilitar")
+    @PreAuthorize("hasRole('GESTOR')")
     @SecurityRequirement(name = "bearerAuth")
-    @Operation(summary = "Obtener foto de perfil",
-            description = "Devuelve la imagen en bytes (image/jpeg).")
+    @Operation(summary = "Habilitar una cuenta (solo GESTOR)",
+            description = "Desde este momento el usuario puede iniciar sesión.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cuenta habilitada"),
+            @ApiResponse(responseCode = "401", description = "Falta el token o es inválido", content = @Content),
+            @ApiResponse(responseCode = "403", description = "El usuario autenticado no es GESTOR", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content)
+    })
+    public UsuarioResponse habilitar(
+            @Parameter(description = "Id del usuario a habilitar", example = "5") @PathVariable Long id) {
+        return service.habilitar(id);
+    }
+
+    @PutMapping("/{id}/deshabilitar")
+    @PreAuthorize("hasRole('GESTOR')")
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Deshabilitar una cuenta (solo GESTOR)",
+            description = "Impide nuevos inicios de sesión. Solo aplica a cuentas con rol USUARIO.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cuenta deshabilitada"),
+            @ApiResponse(responseCode = "400", description = "La cuenta no tiene rol USUARIO", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Falta el token o es inválido", content = @Content),
+            @ApiResponse(responseCode = "403", description = "El usuario autenticado no es GESTOR", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content)
+    })
+    public UsuarioResponse deshabilitar(
+            @Parameter(description = "Id del usuario a deshabilitar", example = "5") @PathVariable Long id) {
+        return service.deshabilitar(id);
+    }
+
+    @PutMapping(value = "/{id}/foto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Subir foto de perfil",
+            description = "Envía la imagen (JPG o PNG, máx. 5 MB) como multipart/form-data en el campo `foto`. "
+                    + "El archivo se guarda en el servidor del microservicio y en la base de datos solo queda su URL, "
+                    + "que se devuelve en `fotoUrl`.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Foto guardada; devuelve el usuario con su nueva fotoUrl"),
+            @ApiResponse(responseCode = "400", description = "Archivo vacío, demasiado grande o que no es una imagen", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Falta el token o es inválido", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Intento de cambiar la foto de otro usuario", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Usuario no encontrado", content = @Content)
+    })
+    public UsuarioResponse subirFoto(
+            @Parameter(description = "Id del usuario", example = "3") @PathVariable Long id,
+            @Parameter(description = "Archivo de imagen (máx. 5 MB)") @RequestParam("foto") MultipartFile archivo) {
+        Acceso.exigirAcceso(id);
+        service.obtener(id);
+        String url = almacenFotos.guardar(id, archivo);
+        String anterior = service.cambiarFoto(id, url);
+        almacenFotos.eliminar(anterior);
+        return service.obtener(id);
+    }
+
+    @GetMapping("/fotos/{archivo}")
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Descargar una foto de perfil por su URL",
+            description = "Es la ruta que se guarda en `fotoUrl`. Devuelve la imagen en bytes (image/jpeg o image/png).")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Imagen del usuario",
                     content = @Content(mediaType = MediaType.IMAGE_JPEG_VALUE,
                             schema = @Schema(type = "string", format = "binary"))),
             @ApiResponse(responseCode = "401", description = "Falta el token o es inválido", content = @Content),
-            @ApiResponse(responseCode = "404", description = "Usuario no encontrado o sin foto", content = @Content)
+            @ApiResponse(responseCode = "403", description = "La foto pertenece a otro usuario", content = @Content),
+            @ApiResponse(responseCode = "404", description = "La foto no existe", content = @Content)
     })
-    public ResponseEntity<byte[]> obtenerFoto(
-            @Parameter(description = "Id del usuario", example = "3") @PathVariable Long id) {
-        return ResponseEntity.ok(service.obtenerFoto(id));
+    public ResponseEntity<byte[]> descargarFoto(
+            @Parameter(description = "Nombre del archivo, tal como aparece al final de fotoUrl",
+                    example = "3-0b0a2f0e-6c1d-4a58-8f6e-2f4f4f0d9a11.jpg") @PathVariable String archivo) {
+        Acceso.exigirAcceso(almacenFotos.propietario(archivo));
+        byte[] datos = almacenFotos.leer(archivo);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(almacenFotos.tipoContenido(archivo)))
+                .body(datos);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("hasRole('ADMIN')")
     @SecurityRequirement(name = "bearerAuth")
-    @Operation(summary = "Eliminar usuario (solo ADMIN)")
+    @Operation(summary = "Eliminar usuario (solo ADMIN)",
+            description = "También borra su foto de perfil del servidor.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Usuario eliminado"),
             @ApiResponse(responseCode = "401", description = "Falta el token o es inválido", content = @Content),
@@ -216,6 +282,8 @@ public class UsuarioController {
     })
     public void eliminar(
             @Parameter(description = "Id del usuario a eliminar", example = "3") @PathVariable Long id) {
+        String foto = service.obtener(id).getFotoUrl();
         service.eliminar(id);
+        almacenFotos.eliminar(foto);
     }
 }

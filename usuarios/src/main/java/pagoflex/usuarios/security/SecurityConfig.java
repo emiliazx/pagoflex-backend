@@ -36,18 +36,18 @@ public class SecurityConfig {
             .cors(c -> c.configurationSource(corsConfigurationSource()))
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // públicos
+
                 .requestMatchers("/api/usuarios/login", "/api/usuarios/recuperar").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/usuarios").permitAll()
                 .requestMatchers("/error").permitAll()
-                // Swagger UI y OpenAPI
+
                 .requestMatchers(
                     "/swagger-ui/**",
                     "/swagger-ui.html",
                     "/v3/api-docs/**",
                     "/api/usuarios/v3/api-docs/**"
                 ).permitAll()
-                // resto requiere JWT
+
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
@@ -56,7 +56,7 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(12); // strength 12 = sal + cost alto
+        return new BCryptPasswordEncoder(12);
     }
 
     @Bean

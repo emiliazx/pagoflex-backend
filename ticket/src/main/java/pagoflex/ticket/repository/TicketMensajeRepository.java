@@ -1,6 +1,5 @@
 package pagoflex.ticket.repository;
 
-
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import pagoflex.ticket.model.TicketMensaje;

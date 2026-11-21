@@ -69,7 +69,7 @@ class DeudaControllerTest {
     void crear_ConConceptoVacio_Retorna400BadRequest() throws Exception {
         DeudaRequest reqInvalido = DeudaRequest.builder()
                 .usuarioId(1L)
-                .concepto("") // Viola @NotBlank
+                .concepto("")
                 .empresa("Movistar")
                 .monto(new BigDecimal("35.00"))
                 .vencimiento("2026-12-15")

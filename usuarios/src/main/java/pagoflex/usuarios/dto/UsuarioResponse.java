@@ -35,4 +35,11 @@ public class UsuarioResponse {
 
     @Schema(description = "Indica si el usuario tiene foto de perfil", example = "true")
     private boolean tieneFoto;
+
+    @Schema(description = "Ruta relativa desde donde se descarga la foto de perfil; null si no tiene",
+            example = "/api/usuarios/fotos/3-0b0a2f0e-6c1d-4a58-8f6e-2f4f4f0d9a11.jpg", nullable = true)
+    private String fotoUrl;
+
+    @Schema(description = "false mientras un gestor no haya habilitado la cuenta", example = "true")
+    private boolean habilitado;
 }

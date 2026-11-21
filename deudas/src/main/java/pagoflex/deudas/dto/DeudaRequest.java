@@ -48,8 +48,8 @@ public class DeudaRequest {
     private String vencimiento;
 
     @Min(1)
-    @Max(60)
-    @Schema(description = "Cantidad de cuotas (1 a 60). Con 1 o sin valor no se generan cuotas", example = "3",
-            minimum = "1", maximum = "60")
+    @Max(72)
+    @Schema(description = "Cantidad de cuotas (1 a 72). Con 1 o sin valor no se generan cuotas", example = "3",
+            minimum = "1", maximum = "72")
     private Integer cantidadCuotas;
 }

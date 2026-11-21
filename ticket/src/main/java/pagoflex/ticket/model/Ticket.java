@@ -16,21 +16,31 @@ public class Ticket {
     @Column(name = "usuario_id", nullable = false)
     private Long usuarioId;
 
-    @Column(nullable = false)
+    @Column(name = "usuario_correo")
+    private String usuarioCorreo;
+
+    @Column(nullable = false, length = 120)
     private String titulo;
 
     @Column(nullable = false, length = 1000)
     private String descripcion;
 
-    /** ABIERTO, EN_PROCESO, CERRADO */
+    @Column(name = "deuda_id")
+    private Long deudaId;
+
+    @Column(length = 200)
+    private String referencia;
+
     @Column(nullable = false)
     private String estado;
 
-    /** null = abierto; true/false al cerrar */
     private Boolean resuelto;
 
     @Column(nullable = false)
     private LocalDateTime fechaCreacion;
 
     private LocalDateTime fechaCierre;
+
+    @Column(name = "cerrado_por_id")
+    private Long cerradoPorId;
 }

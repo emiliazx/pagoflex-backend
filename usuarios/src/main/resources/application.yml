@@ -28,7 +28,10 @@ eureka:
   instance:
     prefer-ip-address: true
 
-# JWT (cambia el secret en producción — mínimo 256 bits en Base64)
+app:
+  uploads:
+    dir: uploads
+
 jwt:
   secret: UGFnb0ZsZXhTZWNyZXRLZXlNdXlTZWd1cmFQYXJhSldUMjAyNiE=
   expiration-ms: 86400000

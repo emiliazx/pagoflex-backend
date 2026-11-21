@@ -34,7 +34,7 @@ public class UsuarioService {
         this.jwtService = jwtService;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = ResponseStatusException.class)
     public LoginResponse login(LoginRequest req) {
         String correo = req.getCorreo().toLowerCase(Locale.ROOT).trim();
         Usuario u = repository.findByCorreo(correo)
@@ -58,9 +58,13 @@ public class UsuarioService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, msg);
         }
 
-        // Login exitoso → resetear intentos
         u.setIntentosFallidos(0);
         repository.save(u);
+
+        if (!u.isHabilitado()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Tu cuenta está pendiente de aprobación. Un gestor debe habilitarla para que puedas ingresar.");
+        }
 
         String token = jwtService.generarToken(u.getId(), u.getCorreo(), u.getRol());
         return LoginResponse.builder()
@@ -71,7 +75,9 @@ public class UsuarioService {
                 .rut(u.getRut())
                 .correo(u.getCorreo())
                 .rol(u.getRol())
-                .tieneFoto(u.getFoto() != null && u.getFoto().length > 0)
+                .tieneFoto(tieneFoto(u))
+                .fotoUrl(u.getFotoUrl())
+                .habilitado(u.isHabilitado())
                 .build();
     }
 
@@ -84,7 +90,7 @@ public class UsuarioService {
                 .nombre(req.getNombre().trim())
                 .rut(req.getRut().trim())
                 .correo(correo)
-                .claveHash(passwordEncoder.encode(req.getContrasena())) // BCrypt + sal
+                .claveHash(passwordEncoder.encode(req.getContrasena()))
                 .rol("USUARIO")
                 .pregunta1(req.getPregunta1())
                 .respuesta1Hash(req.getRespuesta1() != null ? hashSimple(normalizar(req.getRespuesta1())) : "")
@@ -92,6 +98,7 @@ public class UsuarioService {
                 .respuesta2Hash(req.getRespuesta2() != null ? hashSimple(normalizar(req.getRespuesta2())) : "")
                 .intentosFallidos(0)
                 .bloqueado(false)
+                .habilitado(false)
                 .build();
         return toResponse(repository.save(u));
     }
@@ -134,7 +141,6 @@ public class UsuarioService {
                 || !hashSimple(normalizar(req.getRespuesta2())).equals(u.getRespuesta2Hash())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Respuestas incorrectas");
         }
-        // Validar complejidad de la nueva clave
         String nueva = req.getNuevaContrasena();
         if (nueva == null || !nueva.matches("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#._-]).{8,}$")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -146,7 +152,6 @@ public class UsuarioService {
         repository.save(u);
     }
 
-    /** Desbloquear cuenta (solo ADMIN) */
     public void desbloquear(Long id) {
         Usuario u = buscar(id);
         u.setBloqueado(false);
@@ -154,18 +159,34 @@ public class UsuarioService {
         repository.save(u);
     }
 
-    public void guardarFoto(Long id, byte[] foto) {
+    public String cambiarFoto(Long id, String fotoUrl) {
         Usuario u = buscar(id);
-        u.setFoto(foto);
+        String anterior = u.getFotoUrl();
+        u.setFotoUrl(fotoUrl);
         repository.save(u);
+        return anterior;
     }
 
-    public byte[] obtenerFoto(Long id) {
+    public List<UsuarioResponse> listarPendientes() {
+        return repository.findByHabilitadoFalseAndRol("USUARIO").stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    public UsuarioResponse habilitar(Long id) {
         Usuario u = buscar(id);
-        if (u.getFoto() == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Sin foto");
+        u.setHabilitado(true);
+        return toResponse(repository.save(u));
+    }
+
+    public UsuarioResponse deshabilitar(Long id) {
+        Usuario u = buscar(id);
+        if (!"USUARIO".equals(u.getRol())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Solo se pueden deshabilitar cuentas de usuarios");
         }
-        return u.getFoto();
+        u.setHabilitado(false);
+        return toResponse(repository.save(u));
     }
 
     public void eliminar(Long id) {
@@ -189,11 +210,16 @@ public class UsuarioService {
                 .rol(u.getRol())
                 .pregunta1(u.getPregunta1())
                 .pregunta2(u.getPregunta2())
-                .tieneFoto(u.getFoto() != null && u.getFoto().length > 0)
+                .tieneFoto(tieneFoto(u))
+                .fotoUrl(u.getFotoUrl())
+                .habilitado(u.isHabilitado())
                 .build();
     }
 
-    /** Hash simple SHA-256 solo para respuestas secretas (no contraseñas) */
+    private static boolean tieneFoto(Usuario u) {
+        return u.getFotoUrl() != null && !u.getFotoUrl().isBlank();
+    }
+
     public static String hashSimple(String texto) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");

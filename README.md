@@ -13,15 +13,18 @@ flowchart LR
     GW --> D[deudas :8082]
     GW --> P[pagos :8083]
     GW --> T[tarjetas :8084]
+    GW --> TK[ticket :8085]
     U --> DBU[(pagoflex_usuarios)]
     D --> DBD[(pagoflex_deudas)]
     P --> DBP[(pagoflex_pagos)]
     T --> DBT[(pagoflex_tarjetas)]
+    TK --> DBTK[(pagoflex_tickets)]
     GW -.-> E[Eureka :8761]
     U -.-> E
     D -.-> E
     P -.-> E
     T -.-> E
+    TK -.-> E
 ```
 
 ## Microservicios
@@ -34,6 +37,7 @@ flowchart LR
 | Deudas | `deudas` | 8082 | `pagoflex_deudas` | Deudas y cuotas |
 | Pagos | `pagos` | 8083 | `pagoflex_pagos` | Registro e historial de pagos |
 | Tarjetas | `tarjetas` | 8084 | `pagoflex_tarjetas` | Tarjetas de cada usuario |
+| Tickets | `ticket` | 8085 | `pagoflex_tickets` | Reportes de problemas: mensajes, fotos de prueba y cierre |
 
 MySQL corre en un contenedor y se expone en el puerto **3307** del equipo anfitrión.
 
@@ -71,7 +75,7 @@ Comprobar que todo está arriba:
 docker compose ps
 ```
 
-En la primera ejecución, MySQL crea las cuatro bases de datos y el usuario `pagoflex` a partir de `mysql-init/init.sql`. Los servicios esperan a que MySQL esté saludable antes de iniciar. Los servicios pueden tardar unos segundos en registrarse en Eureka antes de que el gateway los enrute.
+En la primera ejecución, MySQL crea las cinco bases de datos y el usuario `pagoflex` a partir de `mysql-init/init.sql`. Los servicios esperan a que MySQL esté saludable antes de iniciar. Los servicios pueden tardar unos segundos en registrarse en Eureka antes de que el gateway los enrute.
 
 | Recurso | URL |
 |---|---|
@@ -99,6 +103,7 @@ Abre http://localhost:8080/swagger-ui.html y elige el servicio en el selector su
 | Deudas | http://localhost:8082/swagger-ui.html |
 | Pagos | http://localhost:8083/swagger-ui.html |
 | Tarjetas | http://localhost:8084/swagger-ui.html |
+| Tickets | http://localhost:8085/swagger-ui.html |
 
 Para probar endpoints protegidos:
 
@@ -118,9 +123,11 @@ Todos los servicios validan el token con el mismo secreto (`JWT_SECRET`).
 
 | Rol | Permisos |
 |---|---|
-| `USUARIO` | Consulta y paga solo sus propias deudas, pagos y datos |
-| `GESTOR` | Crea, edita y elimina deudas y cuotas; consulta datos de cualquier usuario |
-| `ADMIN` | Consulta deudas y pagos de cualquier usuario; desbloquea y elimina usuarios |
+| `USUARIO` | Consulta y paga solo sus propias deudas, pagos y datos; reporta problemas con fotos de prueba |
+| `GESTOR` | Crea, edita y elimina deudas y cuotas; habilita las cuentas nuevas; responde y cierra tickets |
+| `ADMIN` | Consulta deudas, pagos y tickets de cualquier usuario; desbloquea y elimina usuarios |
+
+Las cuentas nuevas se registran como pendientes: no pueden iniciar sesión (403) hasta que un `GESTOR` las habilite.
 
 Después de 5 intentos de login fallidos la cuenta se bloquea (423). Un `ADMIN` puede desbloquearla, o el usuario puede recuperarla con sus preguntas secretas.
 
@@ -151,8 +158,11 @@ Todos los endpoints pasan por el gateway (`http://localhost:8080`).
 | GET | `/{id}` | Autenticado | Obtener un usuario |
 | PUT | `/{id}` | Autenticado | Actualizar perfil |
 | PUT | `/{id}/contrasena` | Autenticado | Cambiar contraseña |
-| PUT | `/{id}/foto` | Autenticado | Subir foto (multipart, máx. 5 MB) |
-| GET | `/{id}/foto` | Autenticado | Obtener foto |
+| PUT | `/{id}/foto` | Autenticado | Subir foto (multipart, JPG o PNG, máx. 5 MB); devuelve `fotoUrl` |
+| GET | `/fotos/{archivo}` | Autenticado | Descargar la foto desde la URL guardada en `fotoUrl` |
+| GET | `/pendientes` | GESTOR | Listar cuentas pendientes de aprobación |
+| PUT | `/{id}/habilitar` | GESTOR | Habilitar una cuenta para que pueda iniciar sesión |
+| PUT | `/{id}/deshabilitar` | GESTOR | Deshabilitar una cuenta de usuario |
 | PUT | `/{id}/desbloquear` | ADMIN | Desbloquear cuenta |
 | DELETE | `/{id}` | ADMIN | Eliminar usuario |
 
@@ -190,15 +200,32 @@ Todos los endpoints pasan por el gateway (`http://localhost:8080`).
 | PUT | `/{id}/principal` | Marcar como principal |
 | DELETE | `/{id}` | Eliminar tarjeta |
 
+### Tickets (`/api/tickets`)
+
+| Método | Ruta | Acceso | Descripción |
+|---|---|---|---|
+| POST | `/` | USUARIO | Reportar un problema |
+| GET | `/` | Autenticado | Listar tickets (`?estado=`, `?usuarioId=`); el usuario ve solo los suyos |
+| GET | `/{id}` | Dueño, GESTOR o ADMIN | Obtener un ticket |
+| POST | `/{id}/mensajes` | Dueño o GESTOR | Enviar un mensaje |
+| GET | `/{id}/mensajes` | Dueño, GESTOR o ADMIN | Ver la conversación |
+| POST | `/{id}/adjuntos` | Dueño | Adjuntar una foto de prueba (máx. 5 por ticket) |
+| GET | `/{id}/adjuntos` | Dueño, GESTOR o ADMIN | Listar las pruebas adjuntas |
+| GET | `/{id}/adjuntos/{adjuntoId}` | Dueño, GESTOR o ADMIN | Descargar una prueba |
+| PUT | `/{id}/cerrar` | GESTOR | Cerrar el ticket como resuelto o sin resolver |
+
 ## Reglas de negocio
 
 - Las contraseñas se guardan con BCrypt. Deben tener mínimo 8 caracteres, mayúscula, minúscula, número y carácter especial.
 - Las respuestas secretas se guardan como hash SHA-256, normalizadas a minúsculas.
-- Una deuda con 2 o más cuotas genera las cuotas automáticamente: monto repartido en partes iguales (el resto va a la última) y un vencimiento por mes.
+- Una deuda admite hasta 72 cuotas. Con 2 o más cuotas se generan automáticamente: monto repartido en partes iguales (el resto va a la última) y un vencimiento por mes.
 - Las cuotas se pagan en orden: no se puede pagar una si hay una anterior pendiente.
 - Al pagar la última cuota pendiente, la deuda pasa a `PAGADA`.
 - Si una deuda ya tiene pagos, solo se pueden editar el concepto y la empresa.
 - Cada usuario puede tener como máximo 4 tarjetas y solo una principal. Solo se guardan los últimos 4 dígitos.
+- Un usuario nuevo queda pendiente hasta que un `GESTOR` lo habilita; mientras tanto el login responde 403.
+- Las fotos de perfil y las pruebas de los tickets se guardan como archivos en el servidor de cada microservicio (volúmenes de Docker); en la base de datos solo queda la URL o los datos del archivo.
+- Un ticket pasa de `ABIERTO` a `EN_PROCESO` cuando el gestor responde y a `CERRADO` cuando el gestor lo cierra indicando si quedó resuelto. Un ticket cerrado no admite más mensajes ni fotos.
 - Un `USUARIO` nunca puede ver ni modificar datos de otro usuario (donde el servicio valida el token).
 
 ## Variables de entorno
@@ -207,16 +234,17 @@ Se definen en `docker-compose.yml`.
 
 | Variable | Servicios | Descripción |
 |---|---|---|
-| `SPRING_DATASOURCE_URL` | usuarios, deudas, pagos, tarjetas | URL JDBC de su base de datos |
-| `SPRING_DATASOURCE_USERNAME` | usuarios, deudas, pagos, tarjetas | Usuario de la base |
-| `SPRING_DATASOURCE_PASSWORD` | usuarios, deudas, pagos, tarjetas | Contraseña de la base |
+| `SPRING_DATASOURCE_URL` | usuarios, deudas, pagos, tarjetas, ticket | URL JDBC de su base de datos |
+| `SPRING_DATASOURCE_USERNAME` | usuarios, deudas, pagos, tarjetas, ticket | Usuario de la base |
+| `SPRING_DATASOURCE_PASSWORD` | usuarios, deudas, pagos, tarjetas, ticket | Contraseña de la base |
 | `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE` | todos | URL del servidor Eureka |
-| `JWT_SECRET` | usuarios, deudas, pagos, tarjetas | Secreto en Base64 para firmar y validar tokens |
+| `JWT_SECRET` | usuarios, deudas, pagos, tarjetas, ticket | Secreto en Base64 para firmar y validar tokens |
 | `JWT_EXPIRATION_MS` | usuarios | Duración del token en milisegundos |
+| `APP_UPLOADS_DIR` | usuarios, ticket | Carpeta donde se guardan las fotos y las pruebas (montada como volumen) |
 
 ## Pruebas
 
-Desde la carpeta de cada servicio (`usuarios`, `deudas`, `pagos`, `tarjetas`):
+Desde la carpeta de cada servicio (`usuarios`, `deudas`, `pagos`, `tarjetas`, `ticket`):
 
 ```bash
 mvn test
@@ -234,7 +262,8 @@ pagoflex-backend
 ├── usuarios
 ├── deudas
 ├── pagos
-└── tarjetas
+├── tarjetas
+└── ticket
 ```
 
 Cada microservicio sigue la misma organización interna: `controller`, `service`, `repository`, `model`, `dto`, `security` y `config`.
@@ -249,7 +278,8 @@ Cada microservicio sigue la misma organización interna: `controller`, `service`
 ## Limitaciones y mejoras futuras
 
 - El servicio de tarjetas aún no valida el JWT: falta aplicar el mismo filtro de seguridad que usan deudas y pagos.
-- La foto de perfil se guarda como `LONGBLOB` en la base de usuarios. Lo recomendable es guardar el archivo en disco (volumen de Docker) o en un almacenamiento de objetos como MinIO, y dejar solo la ruta en la base.
+- Las fotos se guardan en un volumen de Docker del propio microservicio. Para varias réplicas del servicio o un entorno real convendría un almacenamiento de objetos como MinIO o S3.
+- Si una cuenta se deshabilita, su token vigente sigue siendo válido hasta que expire.
 - El secreto JWT y las contraseñas de la base están en `docker-compose.yml`. Para un entorno real deben moverse a un archivo `.env` o a un gestor de secretos.
 
 ## Equipo
